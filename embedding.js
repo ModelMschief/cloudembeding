@@ -1,27 +1,58 @@
-import { pipeline, env } from '@xenova/transformers';
+import { Worker } from 'worker_threads';
 import path from 'path';
 
-// Set up local caching directory (Use HOME on Azure for persistence across container restarts, fallback to cwd locally)
-const homeDir = process.env.HOME || process.cwd();
-env.cacheDir = path.resolve(homeDir, '.cache');
+let worker = null;
+let modelReady = false;
 
-let embedder = null;
+// Keeps track of pending requests
+const pendingRequests = new Map();
+let messageIdCounter = 0;
 
 /**
- * Initializes the model once at startup.
+ * Initializes the model once at startup via a worker thread.
  */
 export async function initializeModel() {
-  if (!embedder) {
-    console.log('Loading Multilingual-E5-small ONNX model...');
-    try {
-      embedder = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small', {
-        quantized: true,
-      });
-      console.log('Model loaded successfully.');
-    } catch (err) {
-      console.error('Failed to load model:', err);
-      throw err;
-    }
+  if (!worker) {
+    console.log('Spawning worker thread for AI model initialization...');
+    
+    // Resolve path to the worker.js script
+    const workerPath = path.resolve(process.cwd(), 'worker.js');
+    
+    worker = new Worker(workerPath);
+    
+    worker.on('message', (message) => {
+      if (message.type === 'ready') {
+        console.log('Worker model is ready.');
+        modelReady = true;
+      } else if (message.type === 'error') {
+        console.error('Worker error:', message.error);
+      } else if (message.type === 'result') {
+        const { id, embedding, error } = message;
+        if (pendingRequests.has(id)) {
+          const { resolve, reject } = pendingRequests.get(id);
+          pendingRequests.delete(id);
+          if (error) {
+            reject(new Error(error));
+          } else {
+            resolve(embedding);
+          }
+        }
+      }
+    });
+    
+    worker.on('error', (err) => {
+      console.error('Worker thread crashed:', err);
+      modelReady = false;
+      worker = null;
+    });
+    
+    worker.on('exit', (code) => {
+      if (code !== 0) {
+        console.error(`Worker stopped with exit code ${code}`);
+      }
+      modelReady = false;
+      worker = null;
+    });
   }
 }
 
@@ -29,7 +60,7 @@ export async function initializeModel() {
  * Returns true if the model has been loaded successfully.
  */
 export function isModelLoaded() {
-  return embedder !== null;
+  return modelReady;
 }
 
 /**
@@ -40,20 +71,18 @@ export function isModelLoaded() {
  * @returns {Promise<number[][]>} - 2D array of embeddings.
  */
 export async function generateEmbeddings(texts, type = 'passage') {
-  if (!embedder) {
+  if (!modelReady || !worker) {
     throw new Error('Model is not initialized.');
   }
 
   // Prepend prefix for E5 model correctly
   const prefix = type === 'query' ? 'query: ' : 'passage: ';
   const prefixedTexts = texts.map(text => `${prefix}${text}`);
-
-  // Run the model with mean pooling and normalization
-  const output = await embedder(prefixedTexts, {
-    pooling: 'mean',
-    normalize: true,
+  
+  const id = messageIdCounter++;
+  
+  return new Promise((resolve, reject) => {
+    pendingRequests.set(id, { resolve, reject });
+    worker.postMessage({ type: 'embed', id, text: prefixedTexts });
   });
-
-  // output is a Tensor, output.tolist() converts it to a standard JS 2D array
-  return output.tolist();
 }
