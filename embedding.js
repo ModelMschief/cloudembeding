@@ -12,9 +12,9 @@ let embedder = null;
  */
 export async function initializeModel() {
   if (!embedder) {
-    console.log('Loading Multilingual-E5-base ONNX model...');
+    console.log('Loading Multilingual-E5-small ONNX model...');
     try {
-      embedder = await pipeline('feature-extraction', 'Xenova/multilingual-e5-base', {
+      embedder = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small', {
         quantized: true,
       });
       console.log('Model loaded successfully.');

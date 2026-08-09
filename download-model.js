@@ -5,11 +5,11 @@ import path from 'path';
 env.cacheDir = path.resolve(process.cwd(), '.cache');
 
 async function downloadModel() {
-  console.log('Downloading model Xenova/multilingual-e5-base...');
+  console.log('Downloading model Xenova/multilingual-e5-small...');
   try {
     // We only instantiate the pipeline to force downloading/caching the model.
-    // It will be cached in .cache/models/Xenova/multilingual-e5-base
-    await pipeline('feature-extraction', 'Xenova/multilingual-e5-base', {
+    // It will be cached in .cache/models/Xenova/multilingual-e5-small
+    await pipeline('feature-extraction', 'Xenova/multilingual-e5-small', {
       quantized: true,
     });
     console.log('Model downloaded and cached successfully.');
