@@ -6,7 +6,6 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "prestart": "node download-model.js",
     "dev": "node server.js"
   },
   "dependencies": {

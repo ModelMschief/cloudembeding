@@ -1,8 +1,9 @@
 import { pipeline, env } from '@xenova/transformers';
 import path from 'path';
 
-// Set up local caching directory
-env.cacheDir = path.resolve(process.cwd(), '.cache');
+// Set up local caching directory (Use HOME on Azure for persistence across container restarts, fallback to cwd locally)
+const homeDir = process.env.HOME || process.cwd();
+env.cacheDir = path.resolve(homeDir, '.cache');
 
 let embedder = null;
 

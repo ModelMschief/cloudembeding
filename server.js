@@ -35,14 +35,19 @@ app.addHook('preHandler', async (request, reply) => {
 
 // Health check endpoint
 app.get('/health', async (request, reply) => {
+  const loaded = isModelLoaded();
   return {
-    status: 'ok',
-    model_loaded: isModelLoaded()
+    status: loaded ? 'ready' : 'loading',
+    model_loaded: loaded
   };
 });
 
 // Embed endpoint
 app.post('/embed', async (request, reply) => {
+  if (!isModelLoaded()) {
+    return reply.status(503).send({ error: 'Service Unavailable: Embedding model is still loading.' });
+  }
+
   const { texts, type = 'passage' } = request.body || {};
 
   // Validate input
@@ -88,13 +93,15 @@ app.get('/', async (request, reply) => {
 // Graceful startup
 const start = async () => {
   try {
-    // 1. Load the model before accepting connections
-    await initializeModel();
-    
-    // 2. Start the Fastify server
+    // 1. Start the Fastify server immediately so Azure detects listening port
     const port = process.env.PORT || 8080;
     await app.listen({ port, host: '0.0.0.0' });
     console.log(`Server listening at http://localhost:${port}`);
+
+    // 2. Load the model in the background asynchronously
+    initializeModel().catch(err => {
+      console.error('Background model initialization failed:', err);
+    });
   } catch (err) {
     console.error('Startup failed:', err);
     process.exit(1);
